@@ -1,7 +1,5 @@
-// use std::str::FromStr;
 use thiserror::Error;
 
-// Custom errors for Bitcoin operations
 #[derive(Error, Debug)]
 pub enum BitcoinError {
     #[error("Invalid transaction format")]
@@ -27,7 +25,7 @@ impl<T> Point<T> {
     }
 }
 
-// Custom serialization for Bitcoin transaction
+
 pub trait BitcoinSerialize {
     fn serialize(&self) -> Vec<u8> {
         // TODO: Implement serialization to bytes
