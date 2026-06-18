@@ -26,10 +26,7 @@ impl<T> Point<T> {
 }
 
 pub trait BitcoinSerialize {
-    fn serialize(&self) -> Vec<u8> {
-        // TODO: Implement serialization to bytes
-        Vec::new()
-    }
+    fn serialize(&self) -> Vec<u8>;
 }
 
 // Legacy Bitcoin transaction
