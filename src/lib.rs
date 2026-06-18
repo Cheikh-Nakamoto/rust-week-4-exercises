@@ -14,7 +14,6 @@ pub enum BitcoinError {
     ParseError(String),
 }
 
-// Generic Point struct for Bitcoin addresses or coordinates
 #[derive(Debug, Clone, PartialEq)]
 pub struct Point<T> {
     pub x: T,
