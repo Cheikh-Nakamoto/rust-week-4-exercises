@@ -32,7 +32,7 @@ impl<T> Point<T> {
 pub trait BitcoinSerialize {
     fn serialize(&self) -> Vec<u8> {
         // TODO: Implement serialization to bytes
-        vec![]
+        Vec::new()
     }
 }
 
