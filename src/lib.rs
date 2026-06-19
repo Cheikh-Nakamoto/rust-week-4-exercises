@@ -1,16 +1,7 @@
-use thiserror::Error;
+mod utils;
+pub use utils::func::BitcoinError;
 
-#[derive(Error, Debug)]
-pub enum BitcoinError {
-    #[error("Invalid transaction format")]
-    InvalidTransaction,
-    #[error("Invalid script format")]
-    InvalidScript,
-    #[error("Invalid amount")]
-    InvalidAmount,
-    #[error("Parse error: {0}")]
-    ParseError(String),
-}
+use crate::utils::func::read_array;
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Point<T> {
@@ -126,12 +117,34 @@ pub struct OutPoint {
     pub vout: u32,
 }
 
+// impl BitcoinSerialize for TxInput {
+//     fn serialize(&self) -> Vec<u8> {
+//         let mut vec = Vec::new();
+//         vec.extend_from_slice(&self.previous_output.txid);
+//         vec.extend_from_slice(&self.previous_output.vout.to_le_bytes());
+//         vec.extend_from_slice(&write_compact_size(self.script_sig.len() as u64));
+//         vec.extend_from_slice(&self.script_sig);
+//         vec.extend_from_slice(&self.sequence.to_le_bytes());
+//         vec
+//     }
+// }
+
+// impl BitcoinSerialize for TxOutput {
+//     fn serialize(&self) -> Vec<u8> {
+//         let mut vec = Vec::new();
+//         vec.extend_from_slice(&self.value.to_le_bytes());
+//         vec.extend_from_slice(&write_compact_size(self.script_pubkey.len() as u64));
+//         vec.extend_from_slice(&self.script_pubkey);
+//         vec
+//     }
+// }
+
 // Simple CLI argument parser
 pub fn parse_cli_args(args: &[String]) -> Result<CliCommand, BitcoinError> {
     // TODO: Match args to "send" or "balance" commands and parse required arguments
     if args.is_empty() {
         return Err(BitcoinError::ParseError(
-            "Failled to parse: empty Input".to_string(),
+            "Failed to parse: empty Input".to_string(),
         ));
     }
     match args[0].as_str() {
@@ -139,22 +152,19 @@ pub fn parse_cli_args(args: &[String]) -> Result<CliCommand, BitcoinError> {
         "send" => {
             if args.len() != 3 {
                 return Err(BitcoinError::ParseError(
-                    "Failled to parse: Less than 3 inputs".to_string(),
+                    "Failed to parse: Less than 3 inputs".to_string(),
                 ));
             }
-            let val = args[1].parse();
-            if val.is_err() {
-                return Err(BitcoinError::ParseError(
-                    "Failled to parse: amount must be a num".to_string(),
-                ));
-            }
+            let amount = args[1].parse().map_err(|_| {
+                BitcoinError::ParseError("Failed to parse: amount must be a num".to_string())
+            })?;
             Ok(CliCommand::Send {
-                amount: val.unwrap(),
+                amount,
                 address: args[2].clone(),
             })
         }
         _ => Err(BitcoinError::ParseError(
-            "Failled to parse: the input is neither balance nor send".to_string(),
+            "Failed to parse: the input is neither balance nor send".to_string(),
         )),
     }
 }
@@ -171,20 +181,36 @@ impl TryFrom<&[u8]> for LegacyTransaction {
     fn try_from(data: &[u8]) -> Result<Self, Self::Error> {
         // TODO: Parse binary data into a LegacyTransaction
         // Minimum length is 10 bytes (4 version + 4 inputs count + 4 lock_time)
-        if data.len() != 16 {
+        // Minimum: 4 version + 1 in_count(=0) + 1 out_count(=0) + 4 lock_time = 10 bytes
+        if data.len() < 10 {
             return Err(BitcoinError::InvalidTransaction);
         }
 
-        let (version, in_count, out_count, lock_time) = (
-            i32::from_le_bytes(data[0..4].try_into().unwrap()),
-            u32::from_le_bytes(data[4..8].try_into().unwrap()),
-            u32::from_le_bytes(data[8..12].try_into().unwrap()),
-            u32::from_le_bytes(data[12..16].try_into().unwrap()),
-        );
+        // &[u8] implémente Read ; lire via `&mut reader` avance la slice.
+        let mut reader = data;
 
-        let inputs = Vec::with_capacity(in_count as usize);
+        // Version: 4 octets little-endian
+        let version = i32::from_le_bytes(read_array::<4, _>(&mut reader)?);
 
-        let outputs = Vec::with_capacity(out_count as usize);
+        // in_count: u32 little-endian (4 octets)
+        let in_count = u32::from_le_bytes(read_array::<4, _>(&mut reader)?) as usize;
+
+        // Parse inputs : on réserve seulement la capacité annoncée
+        let inputs = Vec::with_capacity(in_count);
+
+        // out_count: u32 little-endian (4 octets)
+        let out_count = u32::from_le_bytes(read_array::<4, _>(&mut reader)?) as usize;
+
+        // Parse outputs : on réserve seulement la capacité annoncée
+        let outputs = Vec::with_capacity(out_count);
+
+        // lock_time: 4 octets LE
+        let lock_time = u32::from_le_bytes(read_array::<4, _>(&mut reader)?);
+
+        // Vérifier qu'on a consommé exactement tous les octets
+        if !reader.is_empty() {
+            return Err(BitcoinError::InvalidTransaction);
+        }
 
         Ok(Self {
             version,
@@ -199,10 +225,12 @@ impl TryFrom<&[u8]> for LegacyTransaction {
 impl BitcoinSerialize for LegacyTransaction {
     fn serialize(&self) -> Vec<u8> {
         // TODO: Serialize only version and lock_time (simplified)
-
         let mut vec = Vec::new();
 
+        // Version: 4 octets LE
         vec.extend_from_slice(&self.version.to_le_bytes());
+
+        // lock_time: 4 octets LE
         vec.extend_from_slice(&self.lock_time.to_le_bytes());
 
         vec
